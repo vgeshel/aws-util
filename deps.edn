@@ -1,0 +1,25 @@
+{:paths    ["resources" "src"]
+ :deps     {org.clojure/clojure         {:mvn/version "RELEASE"}
+            com.sun.xml.bind/jaxb-core  {:mvn/version "2.2.11"}
+            javax.xml.bind/jaxb-api     {:mvn/version "2.2.12"}
+            com.taoensso/timbre         {:mvn/version "4.10.0"}
+            manifold                    {:mvn/version "0.1.8"}
+            ;; aws
+            com.cognitect.aws/api       {:mvn/version "0.8.305"}
+            ;; aws sdk
+            software.amazon.awssdk/auth {:mvn/version "2.5.41"}}
+ :jvm-opts ["-Dclojure.spec.compile-asserts=true"
+            "-Dclojure.spec.check-asserts=true"
+            "-DTIMBRE_LEVEL=:info"]
+ :aliases
+ {:dev  {}
+  :test {:extra-paths ["test"]
+         :extra-deps  {org.clojure/test.check      {:mvn/version "RELEASE"}
+                       com.cognitect.aws/endpoints {:mvn/version "1.1.11.549"}
+                       com.cognitect.aws/health    {:mvn/version "697.2.391.0"}}}
+  :runner
+  {:extra-deps {com.cognitect/test-runner
+                {:git/url "https://github.com/cognitect-labs/test-runner"
+                 :sha     "76568540e7f40268ad2b646110f237a60295fa3c"}}
+   :main-opts  ["-m" "cognitect.test-runner"
+                "-d" "test"]}}}
