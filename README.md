@@ -11,7 +11,7 @@ Use in `deps.edn` as a git dependency.
 In `aws-util.util`:
 
  * `credentials-provider` and `default-credentials-provider` give an alternative implementation of credentials, more reliable in my experience then Cognitect's. This uses AWS Java SDK 2.
- * `invoke-async-and-paginate` and `invoke-and-stream` are two helpers for paginating through paginated results of AWS operations, returning [https://github.com/ztellman/manifold](manifold) deferred and stream, respectively.
+ * `invoke-async-and-paginate` and `invoke-and-stream` are two helpers for paginating through paginated results of AWS operations, returning [Manifold](https://github.com/ztellman/manifold) deferred and stream, respectively.
 
 ## License
 
