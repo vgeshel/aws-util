@@ -31,43 +31,62 @@
   @-default-credentials-provider)
 
 (defn invoke-async-and-paginate
-  "Repeat the op invocation passing `nextToken`. Return a manifold deferred which will yield the complete result set. The shape of the yieled object is the same as that of a single invocation response, typically, `{:elements [...], :nextToken \"...\"}` "
-  [client op-map]
+  "Repeat the op invocation passing `nextToken` repeatedly. The name of the next token field can be overridden by passing `:next-token-key` in the `op-map`. Return a manifold deferred which will yield the complete result set. The shape of the yieled object is the same as that of a single invocation response, typically, `{:elements [...], :nextToken \"...\"}` "
+  [client {:keys [next-token-key]
+           :as op-map
+           :or {next-token-key :nextToken}}]
   (d/loop [op op-map
            all-res {}]
-    (let-flow [{:keys [nextToken] :as res} (-> (aws.async/invoke client op)
-                                               ms/->source
-                                               ms/take!)]
-      (let [all-res (merge-with (fn [left right]
-                                  (if (and (coll? left) (coll? right))
-                                    (concat left right)
-                                    right))
-                                all-res
-                                res)]
-        (if (not-empty nextToken)
-          (d/recur (assoc-in op [:request :nextToken] nextToken) all-res)
-          all-res)))))
+    (d/chain
+     (-> (aws.async/invoke client (dissoc op :next-token-key))
+         ms/->source
+         ms/take!)
+     (fn [res]
+       (let [next-token (get res next-token-key)
+             all-res (merge-with (fn [left right]
+                                   (if (and (coll? left) (coll? right))
+                                     (concat left right)
+                                     right))
+                                 all-res
+                                 res)]
+         (if (not-empty next-token)
+           (d/recur (assoc-in op [:request next-token-key] next-token) all-res)
+           all-res))))))
 
 (defn invoke-and-stream
   "Repeatedly invoke an op paging through the results and appending them to a manifold stream.
 
-  The result elements are extracted from the AWS API responce using the `response-key` (can be a keyword or a function). If a stream is not passed it will be created. Returns the stream. Does not block but will pause calling AWS if backpressure is applied on the stream.
+  See `invoke-async-and-paginate` for iteration details.
+
+  The result elements are extracted from the AWS API responce using the `response-key` (can be a keyword or a function). If a stream is not passed it will be created. Returns the stream. Does not block but will pause calling AWS if backpressure is applied on the stream (pass a limited-capacity stream to create backpressure).
 
   Note that the shape of the result is different from that of the AWS operation."
   ([client op-map response-key]
    (invoke-and-stream client op-map response-key (ms/stream) true))
-  ([client op-map response-key stream close?]
+  ([client
+    {:keys [next-token-key]
+     :as   op-map
+     :or   {next-token-key :nextToken}}
+    response-key stream close?]
    (d/chain
     (d/loop [op op-map]
-      (let-flow [{:keys [nextToken] :as res} (-> (aws.async/invoke client op)
-                                                 ms/->source
-                                                 ms/take!)
-                 results (seq (response-key res))
-                 put-done (when results
-                            (ms/put-all! stream results))]
-        (if (not-empty nextToken)
-          (d/recur (assoc-in op [:request :nextToken] nextToken))
-          :done)))
+      (d/chain
+       (-> (aws.async/invoke client (dissoc op :next-token-key))
+           ms/->source
+           ms/take!)
+       (fn [res]
+         (let [next-token (get res next-token-key)
+               results (seq (response-key res))
+               put-done (if results
+                          (ms/put-all! stream results)
+                          (d/success-deferred true))]
+           ;; first deliver all results to the stream, then query for the next batch
+           (d/chain
+            put-done
+            (fn [_]
+              (if (not-empty next-token)
+                (d/recur (assoc-in op [:request next-token-key] next-token))
+                :done)))))))
     (fn [_]
       (when close?
         (ms/close! stream))))
