@@ -3,9 +3,11 @@
   (:require [cognitect.aws.client.api :as aws]
             [cognitect.aws.client.api.async :as aws.async]
             [cognitect.aws.credentials :as credentials]
+            [cognitect.aws.region :as region]
             [manifold.deferred :as d :refer [let-flow]]
             [manifold.stream :as ms])
-  (:import [software.amazon.awssdk.auth.credentials DefaultCredentialsProvider AwsCredentials AwsSessionCredentials AwsCredentialsProvider]))
+  (:import [software.amazon.awssdk.auth.credentials DefaultCredentialsProvider AwsCredentials AwsSessionCredentials AwsCredentialsProvider]
+           [software.amazon.awssdk.regions.providers DefaultAwsRegionProviderChain]))
 
 (defn credentials-provider
   "A credentials provider that uses the AWS SDK implementation instead of Cognitect's.
@@ -19,7 +21,7 @@
         (let [^AwsCredentials creds (.resolveCredentials provider)]
           (cond-> {:aws/access-key-id     (.accessKeyId creds)
                    :aws/secret-access-key (.secretAccessKey creds)}
-            (instance? AwsSessionCredentials creds) (assoc :aws/session-token (.sessionToken creds))))))))
+            (instance? AwsSessionCredentials creds) (assoc :aws/session-token (.sessionToken ^AwsSessionCredentials creds))))))))
 
 (defonce ^:private -default-credentials-provider (delay (credentials-provider)))
 
@@ -29,6 +31,19 @@
   This implementation is more reliable that the one included in the Cognitect library, which I've seen fail mysteriously when running on ECS."
   []
   @-default-credentials-provider)
+
+(defn region-provider []
+  (let [chain (DefaultAwsRegionProviderChain.)
+        region (str (.getRegion chain))]
+    (reify region/RegionProvider
+      (fetch [_]
+        region))))
+
+(def ^:private -default-region-provider
+  (delay (region-provider)))
+
+(defn default-region-provider []
+  @-default-region-provider)
 
 (defn invoke-async-and-paginate
   "Repeat the op invocation passing `nextToken` repeatedly.
